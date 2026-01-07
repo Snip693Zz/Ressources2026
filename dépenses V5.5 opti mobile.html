@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mes Finances Pro</title>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        :root {
+            --bg-gradient: radial-gradient(circle at top left, #1e3a8a, #0f172a 60%, #000000);
+            --glass-bg: rgba(30, 41, 59, 0.6);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --text-main: #ffffff;
+            --text-sec: rgba(255, 255, 255, 0.6);
+            --input-bg: rgba(0, 0, 0, 0.3);
+            --accent: #60a5fa; --success: #34d399; --danger: #ef4444; 
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg-gradient); background-attachment: fixed; background-size: cover;
+            color: var(--text-main); margin: 0; padding: 0;
+            height: 100vh; overflow: hidden; display: flex; flex-direction: column;
+        }
+
+        /* SCROLLBARS */
+        * { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.2) transparent; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.2); border-radius: 10px; border: 2px solid transparent; background-clip: content-box; }
+        
+        input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; }
+
+        /* --- MODE MOBILE (Par défaut) --- */
+        .app-layout { 
+            display: block; 
+            padding: 20px 20px 100px 20px; 
+            overflow-y: auto; height: 100%;
+        }
+        
+        /* SUR MOBILE : TOUT EST CACHÉ PAR DÉFAUT */
+        /* C'est la règle clé qui empêche l'empilement */
+        .view { display: none !important; animation: fadeIn 0.3s; }
+        
+        /* SEULE LA VUE ACTIVE EST AFFICHÉE */
+        .view.active { display: block !important; }
+
+        /* On cache STRICTEMENT les éléments PC sur mobile */
+        .smart-widgets { display: none; }
+        .year-overview { display: none; }
+        .center-column { display: contents; } 
+        
+        @media (max-width: 1023px) {
+            /* CORRECTIF SPÉCIFIQUE LISTE MOBILE */
+            #view-list { 
+                /* Si view-list est active, on le met en flex pour gérer le scroll interne */
+                display: none !important; 
+                flex-direction: column; 
+                height: 100%; 
+            }
+            #view-list.active { display: flex !important; }
+            #list-container { flex: 1; overflow-y: auto; min-height: 0; }
+            
+            /* Sécurité supplémentaire : On cache tout ce qui n'est pas mobile */
+            .pc-only-block { display: none !important; }
+        }
+
+        /* --- MODE PC FIT-SCREEN (1024px+) --- */
+        @media (min-width: 1024px) {
+            .app-layout {
+                display: grid !important; 
+                max-width: 100%; height: 100vh; padding: 20px; overflow: hidden;
+                grid-template-columns: 320px 1fr 320px; 
+                grid-template-rows: 60% 1fr; gap: 20px; align-items: stretch;
+            }
+            .dock { display: none !important; } 
+            
+            /* SUR PC : ON FORCE L'AFFICHAGE DE TOUTES LES VUES EN MÊME TEMPS */
+            .view { display: flex !important; flex-direction: column; animation: none; }
+            
+            #view-add { grid-row: 1 / -1; grid-column: 1; }
+            #view-stats { grid-row: 1 / -1; grid-column: 3; }
+            
+            /* Colonne centrale PC */
+            .center-column { 
+                display: flex !important; grid-column: 2; grid-row: 1; 
+                flex-direction: column; gap: 15px; overflow: hidden; 
+            }
+            
+            #view-list { 
+                grid-column: 2; grid-row: 1; 
+                flex: 1; min-height: 0; display: flex; flex-direction: column; 
+            }
+            
+            /* On RÉAFFICHE les éléments PC */
+            .smart-widgets { display: grid !important; grid-template-columns: 1fr 1fr 1fr; gap: 12px; height: 85px; }
+            .year-overview { display: flex !important; grid-column: 2; grid-row: 2; min-height: 0; margin-top: 0; }
+            
+            .chart-container { flex: 1; position: relative; width: 100%; }
+            .widget-card { 
+                background: var(--glass-bg); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); 
+                border-radius: 20px; padding: 0 15px; 
+                display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap: 15px;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            }
+        }
+
+        /* --- STYLES COMMUNS --- */
+        .glass-card { background: var(--glass-bg); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); border-radius: 20px; padding: 20px; display: flex; flex-direction: column; }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        h1 { margin: 0; font-size: 20px; }
+        
+        input, select { width: 100%; background: var(--input-bg); border: none; color: white; padding: 12px; border-radius: 10px; margin-bottom: 10px; }
+        
+        .amount-wrapper { position: relative; margin-bottom: 10px; }
+        .amount-wrapper input { padding-right: 30px; text-align: center; }
+        .amount-wrapper::after { content: '€'; position: absolute; right: 15px; top: 50%; transform: translateY(-50%); color: var(--text-sec); font-weight: bold; font-size: 20px; pointer-events: none; }
+        #amount { font-size: 28px; font-weight: 800; background: transparent; border-bottom: 2px solid rgba(255,255,255,0.1); border-radius: 0; padding: 10px 0; color: white; margin-bottom: 0; }
+        
+        .list-item { background: var(--input-bg); margin-bottom: 8px; padding: 10px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .icon-box { width: 35px; height: 35px; background: rgba(255,255,255,0.1); border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-right: 10px; }
+        
+        .zoom-controls { display: flex; gap: 5px; background: var(--input-bg); padding: 3px; border-radius: 8px; }
+        .zoom-btn { background: none; border: none; color: var(--text-sec); padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; }
+        .zoom-btn.active { background: var(--glass-border); color: white; }
+
+        .type-switch { display: flex; background: var(--input-bg); border-radius: 12px; padding: 4px; margin-bottom: 20px; }
+        .type-btn { flex: 1; border: none; background: none; color: var(--text-sec); padding: 10px; border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.2s; }
+        .type-btn.active.expense { background: var(--danger); color: white; }
+        .type-btn.active.income { background: var(--success); color: white; }
+        .btn-action { width: 100%; background: #ffffff; color: #000; border: none; padding: 15px; border-radius: 15px; font-weight: 700; cursor: pointer; margin-top: auto; }
+        
+        .item-price.income { color: var(--success); font-weight:700; } .item-price.expense { color: white; font-weight:700; }
+        .delete-btn { background: none; border: none; color: var(--danger); cursor: pointer; }
+        
+        .budget-item { margin-bottom: 12px; }
+        .budget-header { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; font-weight: 600; color: var(--text-sec); }
+        .progress-bar { width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
+        .progress-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
+
+        .widget-val { font-size: 18px; font-weight: 700; margin-bottom: 2px; line-height: 1.1; }
+        .widget-label { font-size: 11px; color: rgba(255,255,255,0.6); }
+        .widget-content { display: flex; flex-direction: column; justify-content: center; padding-bottom: 2px; }
+
+        .dock { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(15,23,42,0.9); padding: 12px 25px; border-radius: 35px; display: flex; gap: 30px; z-index: 100; border: 1px solid rgba(255,255,255,0.1); }
+        .dock-item { background: none; border: none; color: rgba(255,255,255,0.6); font-size: 24px; }
+        .dock-item.active { color: #60a5fa; transform: translateY(-3px); }
+        
+        @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+
+        #toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white; padding: 8px 16px; border-radius: 20px; z-index: 999; display:none; }
+    </style>
+</head>
+<body>
+    <div id="toast">✅ Sauvegardé</div>
+
+    <div class="app-layout">
+        
+        <!-- 1. VUE AJOUT (Mobile Tab 1 / PC Gauche) -->
+        <div class="glass-card view active" id="view-add">
+            <header><h1>Ajouter</h1></header>
+            <div class="type-switch"><button class="type-btn active expense" onclick="setType('expense')">Dépense</button><button class="type-btn income" onclick="setType('income')">Revenu</button></div>
+            
+            <div class="amount-wrapper">
+                <input type="number" id="amount" placeholder="0.00" step="0.01">
+            </div>
+
+            <select id="category">
+                <option value="Alimentation">🍔 Alimentation</option><option value="Transport">🚗 Transport</option>
+                <option value="Logement">🏠 Logement</option><option value="Loisirs">🎉 Loisirs</option>
+                <option value="Santé">💊 Santé</option><option value="Salaire">💰 Salaire</option>
+                <option value="Vente">📦 Vente</option><option value="Divers">📦 Divers</option>
+            </select>
+            <input type="text" id="note" placeholder="Note (ex: McDo, Loyer...)">
+            <input type="date" id="date">
+            <button class="btn-action" onclick="sendData()">Valider</button>
+        </div>
+
+        <!-- 2. VUE CENTRE (Mobile Tab 2 / PC Centre) -->
+        <div class="center-column" id="wrapper-center"> 
+            
+            <!-- LISTE (Seul élément visible sur Tab 2 Mobile) -->
+            <div class="glass-card view" id="view-list"> 
+                <header><h1>Historique</h1><select id="monthFilter" style="width:auto; padding:5px;" onchange="renderData()"></select></header>
+                <div id="list-container"></div>
+            </div>
+
+            <!-- WIDGETS (PC ONLY - Caché sur mobile) -->
+            <div class="smart-widgets">
+                <div class="widget-card">
+                    <div class="widget-icon" style="color:#f59e0b"><i class="fas fa-chart-line"></i></div>
+                    <div class="widget-content"><div class="widget-val" id="w-avg">0€</div><div class="widget-label">Moy./Jour</div></div>
+                </div>
+                <div class="widget-card">
+                    <div class="widget-icon" style="color:#60a5fa"><i class="fas fa-trophy"></i></div>
+                    <div class="widget-content"><div class="widget-val" id="w-top" style="font-size:14px">-</div><div class="widget-label">Top Post</div></div>
+                </div>
+                <div class="widget-card">
+                    <div class="widget-icon" style="color:#34d399"><i class="fas fa-wallet"></i></div>
+                    <div class="widget-content"><div class="widget-val" id="w-prev">0€</div><div class="widget-label">Solde Fin</div></div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- 3. GRAPHIQUE TRESORERIE (PC ONLY - Caché sur mobile) -->
+        <div class="year-overview glass-card pc-only-block">
+            <header>
+                <h2 style="margin:0; font-size:16px;">📈 Trésorerie</h2>
+                <div class="zoom-controls">
+                    <button class="zoom-btn active" onclick="setZoom('1Y', this)">1 An</button>
+                    <button class="zoom-btn" onclick="setZoom('3M', this)">3 Mois</button>
+                    <button class="zoom-btn" onclick="setZoom('1M', this)">1 Mois</button>
+                </div>
+            </header>
+            <div class="chart-container">
+                <canvas id="cashflow-chart"></canvas>
+            </div>
+        </div>
+
+        <!-- 4. VUE BILAN (Mobile Tab 3 / PC Droite) -->
+        <div class="glass-card view" id="view-stats">
+            <header><h1>Bilan</h1></header>
+            <div style="text-align:center; margin-bottom:20px;">
+                <div style="font-size:12px; opacity:0.6">Balance</div>
+                <div id="balance-display" style="font-size:32px; font-weight:800; color:#34d399">+0.00 €</div>
+            </div>
+            <div style="height:200px; flex-shrink:0;"><canvas id="chart"></canvas></div>
+            
+            <div style="margin-top:20px; display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0; font-size:14px;">Budgets</h3>
+                <button onclick="openBudgetModal()" style="background:none; border:none; color:var(--accent); cursor:pointer; font-size:12px;"><i class="fas fa-cog"></i></button>
+            </div>
+            <div id="budget-container" style="overflow-y:auto; flex:1; margin-top:10px;"></div>
+        </div>
+
+        <!-- MODAL -->
+        <div class="modal" id="budgetModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:200; align-items:center; justify-content:center;">
+            <div class="glass-card" style="width:300px;">
+                <h2>Plafonds</h2><div id="budget-inputs"></div>
+                <button class="btn-action" onclick="saveBudgets()">Enregistrer</button>
+                <button onclick="document.getElementById('budgetModal').style.display='none'" style="width:100%; background:none; border:none; color:white; padding:15px; cursor:pointer;">Annuler</button>
+            </div>
+        </div>
+
+    </div>
+
+    <nav class="dock">
+        <button class="dock-item active" onclick="switchTab('add', this)"><i class="fas fa-plus"></i></button>
+        <button class="dock-item" onclick="switchTab('list', this)"><i class="fas fa-list"></i></button>
+        <button class="dock-item" onclick="switchTab('stats', this)"><i class="fas fa-chart-pie"></i></button>
+    </nav>
+
+    <script>
+        const API_URL = "https://script.google.com/macros/s/AKfycbw4c4wrg8OEkq1_MpfgzWcaBiMkQ--49NoJEHYey9E7ARYaKb2q2dOU8dWBVdPPdj3U/exec";
+        let allData = [];
+        let cashflowChart = null;
+        let currentZoom = '1Y'; 
+        let USER_BUDGETS = { 'Alimentation': 400, 'Transport': 150, 'Loisirs': 200, 'Logement': 800, 'Santé': 100, 'Divers': 100 };
+        const savedB = localStorage.getItem('user_budgets');
+        if(savedB) USER_BUDGETS = JSON.parse(savedB);
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('date').valueAsDate = new Date();
+            initMonthSelector();
+            localStorage.removeItem('expenses_cache');
+            loadData();
+            
+            // Initialisation Mobile : Force l'affichage correct au démarrage
+            if(window.innerWidth < 1024) {
+               switchTab('add', document.querySelector('.dock-item.active'));
+            }
+        });
+
+        function setZoom(period, btn) {
+            currentZoom = period;
+            document.querySelectorAll('.zoom-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderCashflowChart();
+        }
+
+        function loadData() {
+            fetch(API_URL).then(r => r.json()).then(res => {
+                if(res.status === 'success') {
+                    allData = res.data;
+                    renderData();
+                    if(window.innerWidth >= 1024) { renderCashflowChart(); updateWidgets(allData); }
+                }
+            });
+        }
+
+        function renderData() {
+            const m = document.getElementById('monthFilter').value;
+            const filtered = allData.filter(i => String(i.date).includes(m));
+            renderList(filtered);
+            renderStats(filtered);
+            if(window.innerWidth >= 1024) updateWidgets(filtered);
+        }
+
+        function renderList(data) {
+            const list = document.getElementById('list-container');
+            if(!data.length) { list.innerHTML = '<div style="text-align:center;opacity:0.5;margin-top:20px">Vide</div>'; return; }
+            let html = '';
+            const icons = { 'Alimentation': 'fa-burger', 'Transport': 'fa-car', 'Logement': 'fa-house', 'Loisirs': 'fa-gamepad', 'Santé': 'fa-heart-pulse', 'Salaire': 'fa-money-bill', 'Vente': 'fa-hand-holding-dollar' };
+            data.forEach(i => {
+                const icon = icons[i.category] || 'fa-tag';
+                const sign = i.type === 'income' ? '+' : '-';
+                const col = i.type === 'income' ? 'income' : 'expense';
+                const noteHtml = i.note ? `<div style="font-size:11px; opacity:0.6; margin-top:2px;">${i.note}</div>` : '';
+                html += `
+                <div class="list-item">
+                    <div style="display:flex;align-items:center">
+                        <div class="icon-box"><i class="fas ${icon}"></i></div>
+                        <div>
+                            <div style="font-weight:600">${i.category}</div>
+                            <div style="font-size:11px;opacity:0.6">${i.date}</div>
+                            ${noteHtml}
+                        </div>
+                    </div>
+                    <div class="item-price ${col}">${sign}${i.amount}€ <i class="fas fa-trash delete-btn" onclick="deleteItem('${i.date}','${i.category}',${i.amount},'${i.type}')"></i></div>
+                </div>`;
+            });
+            list.innerHTML = html;
+        }
+
+        function renderStats(data) {
+            let inc=0, exp=0, stats={};
+            data.forEach(i => { if(i.type==='income') inc+=i.amount; else { exp+=i.amount; stats[i.category]=(stats[i.category]||0)+i.amount; }});
+            document.getElementById('balance-display').innerText = (inc-exp>0?'+':'')+(inc-exp).toFixed(2)+' €';
+            
+            const ctx = document.getElementById('chart').getContext('2d');
+            if(window.doughnut) window.doughnut.destroy();
+            window.doughnut = new Chart(ctx, { type:'doughnut', data:{labels:Object.keys(stats), datasets:[{data:Object.values(stats), borderWidth:0, backgroundColor:['#60a5fa','#34d399','#f472b6','#fbbf24']}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{color:'white', boxWidth:10}}}}});
+
+            let bHtml = '';
+            for(const [c, lim] of Object.entries(USER_BUDGETS)) {
+                if(lim <= 0) continue;
+                const s = stats[c] || 0;
+                const p = Math.min((s/lim)*100, 100);
+                const col = p >= 100 ? 'var(--danger)' : (p > 75 ? '#f59e0b' : 'var(--success)');
+                bHtml += `<div class="budget-item"><div class="budget-header"><span>${c}</span><span>${s}€ / ${lim}€</span></div><div class="progress-bar"><div class="progress-fill" style="width:${p}%; background:${col}"></div></div></div>`;
+            }
+            document.getElementById('budget-container').innerHTML = bHtml;
+        }
+
+        function updateWidgets(data) {
+            let total=0, cats={};
+            data.forEach(d => { if(d.type==='expense'){ total+=d.amount; cats[d.category]=(cats[d.category]||0)+d.amount; } });
+            const avg = total / (new Date().getDate() || 1);
+            document.getElementById('w-avg').innerText = avg.toFixed(0)+'€';
+            let topC='-', max=0;
+            for(const [k,v] of Object.entries(cats)) if(v>max){max=v; topC=k;}
+            document.getElementById('w-top').innerText = topC;
+            const bal = parseFloat(document.getElementById('balance-display').innerText.replace(/[+€]/g,''));
+            document.getElementById('w-prev').innerText = bal.toFixed(0)+'€';
+        }
+
+        function renderCashflowChart() {
+            const ctx = document.getElementById('cashflow-chart').getContext('2d');
+            if(cashflowChart) cashflowChart.destroy();
+
+            const now = new Date();
+            let startDate, endDate;
+
+            if(currentZoom === '1Y') {
+                startDate = new Date(now.getFullYear(), 0, 1);
+                endDate = new Date(now.getFullYear(), 11, 31);
+            } else if(currentZoom === '3M') {
+                startDate = new Date(now.getFullYear(), now.getMonth()-2, 1); 
+                endDate = new Date(now.getFullYear(), now.getMonth()+1, 0); 
+            } else { 
+                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                endDate = new Date(now.getFullYear(), now.getMonth()+1, 0);
+            }
+
+            const labels = [];
+            const dataPoints = [];
+            let currentBal = 0;
+            
+            const sortedAll = [...allData].sort((a,b) => new Date(a.date)-new Date(b.date));
+            sortedAll.forEach(d => {
+                if(new Date(d.date) < startDate) {
+                    currentBal += (d.type==='income'?d.amount:-d.amount);
+                }
+            });
+
+            for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+                const dayStr = d.toLocaleDateString('fr', {day:'numeric', month:'short'});
+                labels.push(dayStr);
+
+                if(d > now) {
+                    dataPoints.push(null); 
+                    continue;
+                }
+
+                const dayIso = d.toISOString().split('T')[0];
+                const dayTrans = sortedAll.filter(t => t.date === dayIso);
+                dayTrans.forEach(t => {
+                    currentBal += (t.type==='income'?t.amount:-t.amount);
+                });
+
+                dataPoints.push(currentBal);
+            }
+
+            const grad = ctx.createLinearGradient(0,0,0,300);
+            grad.addColorStop(0, 'rgba(96,165,250,0.5)'); grad.addColorStop(1, 'rgba(96,165,250,0)');
+
+            cashflowChart = new Chart(ctx, {
+                type: 'line',
+                data: { 
+                    labels: labels, 
+                    datasets:[{ 
+                        data: dataPoints, 
+                        borderColor: '#60a5fa', 
+                        backgroundColor: grad, 
+                        fill: true, 
+                        tension: 0.4, 
+                        pointRadius: 0, 
+                        pointHitRadius: 10,
+                        spanGaps: false 
+                    }] 
+                },
+                options: { 
+                    responsive:true, maintainAspectRatio:false, 
+                    plugins:{legend:{display:false}}, 
+                    scales:{
+                        x:{
+                            grid:{display:false},
+                            ticks:{ color:'rgba(255,255,255,0.5)', maxTicksLimit: 12, autoSkip: true }
+                        }, 
+                        y:{grid:{color:'rgba(255,255,255,0.1)'},ticks:{color:'rgba(255,255,255,0.5)'}}
+                    } 
+                }
+            });
+        }
+
+        function setType(t) { document.querySelectorAll('.type-btn').forEach(b=>b.classList.remove('active')); document.querySelector(`.type-btn.${t}`).classList.add('active'); }
+        function sendData() { 
+            const p = {action:'add', date:document.getElementById('date').value, amount:document.getElementById('amount').value, category:document.getElementById('category').value, note:document.getElementById('note').value, type:document.querySelector('.type-btn.active.income')?'income':'expense'};
+            fetch(API_URL,{method:'POST',body:JSON.stringify(p)}).then(()=>{ document.getElementById('toast').style.display='block'; setTimeout(()=>document.getElementById('toast').style.display='none',2000); loadData(); document.getElementById('amount').value=''; });
+        }
+        function deleteItem(d,c,a,t) { if(confirm('Supprimer ?')) fetch(API_URL,{method:'POST',body:JSON.stringify({action:'delete',date:d,category:c,amount:a,type:t})}).then(loadData); }
+        function initMonthSelector() { const s=document.getElementById('monthFilter'); const d=new Date(); for(let i=0;i<12;i++){ const o=document.createElement('option'); o.value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; o.innerText=d.toLocaleDateString('fr',{month:'long'}); s.appendChild(o); d.setMonth(d.getMonth()-1); }}
+        
+        function switchTab(id,btn) { 
+            // 1. On enlève la classe active de TOUS les boutons
+            document.querySelectorAll('.dock-item').forEach(b=>b.classList.remove('active')); 
+            btn.classList.add('active'); 
+
+            // 2. On masque TOUTES les vues (avec le CSS !important, ça va forcer le display:none)
+            document.querySelectorAll('.view').forEach(v=>v.classList.remove('active')); 
+            
+            // 3. On affiche UNIQUEMENT la vue demandée
+            // Sur mobile, cela garantit que seul UN bloc est visible
+            const view = document.getElementById('view-'+id);
+            if(view) view.classList.add('active');
+        }
+        
+        function openBudgetModal() { 
+            const c = document.getElementById('budget-inputs'); 
+            let h = ''; 
+            for(const k of ['Alimentation', 'Transport', 'Logement', 'Loisirs', 'Santé', 'Divers']) {
+                h += `<div style="display:flex; justify-content:space-between; margin-bottom:10px;"><span style="color:white">${k}</span><input type="number" id="budget-${k}" value="${USER_BUDGETS[k]||0}" style="width:80px; padding:5px; margin:0;"></div>`;
+            }
+            c.innerHTML = h; 
+            document.getElementById('budgetModal').style.display='flex'; 
+        }
+        function saveBudgets() { 
+            ['Alimentation', 'Transport', 'Logement', 'Loisirs', 'Santé', 'Divers'].forEach(k => { USER_BUDGETS[k] = Number(document.getElementById(`budget-${k}`).value); }); 
+            localStorage.setItem('user_budgets', JSON.stringify(USER_BUDGETS)); 
+            document.getElementById('budgetModal').style.display='none'; 
+            renderData(); 
+        }
+    </script>
+</body>
+</html>
